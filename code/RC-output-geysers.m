@@ -3,13 +3,13 @@ clear
 compare=zeros(18,12,10,10);
 
 %1 month=43200 min;
-delays=[5,10,30,60,120,240,480,960,1440,2880,7200,14400]/5;%in min (5 min sampling)
+delays=[5,10,30,60,120,240,480,960,1440,2880,7200,14400]/5;%in min (5 min sampling), specify set of delays
 dl_labels=["5 min","10 min", "30 min", "1 hr", "2 hr", "4 hr", "8 hr", "16 hr", "1 day", "2 day", "5 day", "10 day"];
 delays=floor(delays);
 % rng shuffle
 
 %%read data (time-series)
-T=readtable('collation_revised.csv','NumHeaderLines',1);
+T=readtable('collation_revised.csv','NumHeaderLines',1);%You will need to download the original data from https://doi.org/10.5061/dryad.n5tb2rbrm separately.
 
 x=zeros(833844,10);
 
@@ -26,7 +26,7 @@ x(:,10)=table2array(T(:,15));
 
 x=x';
 
-names=["BE"; "CA"; "DE"; "DO"; "GR"; "LN"; "LS"; "OF"; "PT"; "PM"]';
+names=["BE"; "CA"; "DE"; "DO"; "GR"; "LN"; "LS"; "OF"; "PT"; "PM"]';%Geyser names
 figure
 
 for imonth=1:1
@@ -36,8 +36,8 @@ for idel=6:6
 idelay=delays(1,idel);%set delay time step
 
 xplot=x(:,(imonth-1)*43200+1:5:imonth*43200);%5 min sampling for one month
-data=xplot(:,1:5700);
-diff_data=xplot(:,1+idelay:5700+idelay);
+data=xplot(:,1:5700);%input to reservoir computer
+diff_data=xplot(:,1+idelay:5700+idelay);%delayed prediction
 
 % xplot=x(:,1:5:end);
 % data=xplot(:,1:160000);
@@ -91,70 +91,70 @@ resparams.predict_length_max=resparams.predict_length;
 resparams.beta = 0.0001; %regularization parameter
 
 %% Reservoir dynamics
-% A = generate_reservoir(resparams.N, resparams.radius, resparams.degree);
-% q = resparams.N/resparams.num_inputs;
-% win = zeros(resparams.N, resparams.num_inputs);
-% for i=1:resparams.num_inputs
+%A = generate_reservoir(resparams.N, resparams.radius, resparams.degree);
+%q = resparams.N/resparams.num_inputs;
+%win = zeros(resparams.N, resparams.num_inputs);
+%for i=1:resparams.num_inputs
 %      rng(i+50,'twister')
 %     ip = resparams.sigma*(-1 + 2*rand(q,1));
 %     win((i-1)*q+1:i*q,i) = ip;
 % end
-% states = reservoir_layer(A, win, data, resparams);
+ %states = reservoir_layer(A, win, data, resparams);
 
 
 
 [xx, w_out, A, win,r] = train_reservoir(resparams, measurements1,measurements2);%Train and save w_out matrix for future use
 
-%% Predicting only one component from itself with same w_out
-predict_distance=zeros(2,10);
-for igeyser=1:10
-    disp(igeyser)
-m=zeros(size(measurements1));
-m(igeyser,:)=measurements1(igeyser,:);
-r1 = reservoir_layer(A, win, m, resparams);
-d=w_out*r;%original training fit
-d1=w_out*r1;%only using one geyser
-d0=measurements2(:,1:5689);
-predict_distance(1,igeyser)=sum(abs(d0(igeyser,:)-d(igeyser,:)).^2,'all');
-predict_distance(2,igeyser)=sum(abs(d0(igeyser,:)-d1(igeyser,:)).^2,'all');
-end
-save("predict_distance.mat","predict_distance")
+%% Predicting only one component from itself with same w_out (uncomment and run this part if you wish to evaluate prediction from one geyser only)
+%predict_distance=zeros(2,10);
+%for igeyser=1:10
+    %disp(igeyser)
+%m=zeros(size(measurements1));
+%m(igeyser,:)=measurements1(igeyser,:);
+%r1 = reservoir_layer(A, win, m, resparams);
+%d=w_out*r;%original training fit
+%d1=w_out*r1;%only using one geyser
+%d0=measurements2(:,1:5689);
+%predict_distance(1,igeyser)=sum(abs(d0(igeyser,:)-d(igeyser,:)).^2,'all');
+%predict_distance(2,igeyser)=sum(abs(d0(igeyser,:)-d1(igeyser,:)).^2,'all');
+%end
+%save("predict_distance.mat","predict_distance")
 
 
 
 
-% disp(['training Done'])
+ disp(['training Done'])
 % [output,r] = predict(A,win,resparams,xx,data(:,resparams.train_length:resparams.train_length+resparams.predict_length-1),w_out);%Prediction for the Training Time Series Data
 
 
 %% Jacobian Estimation
 av_length=floor(resparams.train_length*0.8);
 
-%% If predicting x(t+dt)from x(t)
-% conn1=zeros(size(win,2));
-% B=A+win*w_out;
-% for it=resparams.train_length-av_length:resparams.train_length
-%     
-%     if mod(it,1000)==0
-%     disp(it)
-%     end
-%     
-%     xx=r(:,it);
-%     A2=B*xx;
-%         
-%     mat1=zeros(size(w_out));
-% 
-%     for i1=1:resparams.N
-%         mat1(:,i1)=w_out(:,i1)*(sech(A2(i1)))^2;
-%     end
-%     
-%            conn1=conn1+abs(mat1*(win+A*pinv(w_out)));
+%% If predicting x(t+tau)from x(t)
+ conn1=zeros(size(win,2));
+ B=A+win*w_out;
+ for it=resparams.train_length-av_length:resparams.train_length
+     
+     if mod(it,1000)==0
+     disp(it)
+     end
+     
+     xx=r(:,it);
+     A2=B*xx;
+         
+     mat1=zeros(size(w_out));
+ 
+     for i1=1:resparams.N
+         mat1(:,i1)=w_out(:,i1)*(sech(A2(i1)))^2;
+     end
+     
+            conn1=conn1+abs(mat1*(win+A*pinv(w_out)));
 % %           conn1=conn1+(mat1*(win+A*pinv(w_out)));
-% 
-% end
-% conn1=conn1/(av_length);
-% 
-% compare(imonth,idel,:,:)=conn1(:,:);
+ 
+ end
+ conn1=conn1/(av_length);
+ 
+ compare(imonth,idel,:,:)=conn1(:,:);
 
 figure
 for idel1=1:12
